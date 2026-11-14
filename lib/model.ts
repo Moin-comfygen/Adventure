@@ -1,3 +1,4 @@
+import { demoCategories } from "./service-catalog";
 export type Role = "Super Admin" | "Manager" | "Receptionist";
 export type Module =
   | "Dashboard"
@@ -30,6 +31,8 @@ export const actions: Action[] = [
   "print",
 ];
 export type Service = {
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
   id: string;
   name: string;
   category: string;
@@ -105,6 +108,7 @@ export type Section = {
   border: boolean;
 };
 export type Template = {
+  includeServiceImages?: boolean;
   qr?: string;
   name: string;
   sections: Section[];
@@ -319,13 +323,9 @@ export function seed(): State {
   const services = names.map((name, i) => ({
     id: `s${i}`,
     name,
-    category: [
-      "Water adventure",
-      "Air adventure",
-      "Water adventure",
-      "Mountain trek",
-      "Air adventure",
-    ][i % 5],
+    category: demoCategories[i],
+    imageUrl: `/images/services/s${i}.svg`,
+    thumbnailUrl: `/images/services/s${i}-thumb.svg`,
     price: [1500, 3550, 1200, 8500, 1800, 2500, 2200, 900, 1600, 750][i],
     gst: [5, 18, 5, 12, 18][i % 5],
   }));
@@ -394,6 +394,7 @@ export function seed(): State {
     templates: [
       {
         name: "Adventure Classic",
+        includeServiceImages: false,
         sections,
         columns: [
           "Service",

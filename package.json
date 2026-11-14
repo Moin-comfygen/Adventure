@@ -10,8 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "node scripts/billing-smoke.cjs && node scripts/smoke.cjs",
     "format": "prettier --write app lib components tests scripts",
-    "lint": "eslint app components lib tests next.config.ts",
-    "test:dashboard": "node scripts/dashboard-check.cjs"
+    "lint": "eslint app components hooks lib tests next.config.ts",
+    "test:dashboard": "node scripts/dashboard-check.cjs",
+    "test:pos": "node scripts/pos-check.cjs",
+    "test:images": "node scripts/service-images-check.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.0",

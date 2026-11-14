@@ -57,9 +57,9 @@ export function invoiceStatus(
   const due = Math.max(0, round(invoice.total - collected));
   if (invoice.status !== "Active")
     return { label: invoice.status, tone: "red", due: 0 };
-  if (collected >= invoice.total)
+  if (collected > 0 && collected >= invoice.total)
     return { label: "Paid", tone: "green", due: 0 };
-  if (invoice.dueDate && invoice.dueDate.slice(0, 10) < today)
+  if (due > 0 && invoice.dueDate && invoice.dueDate.slice(0, 10) < today)
     return { label: "Overdue", tone: "overdue", due };
   return {
     label: collected === 0 ? "Unpaid" : "Partial",

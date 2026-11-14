@@ -53,10 +53,18 @@ The official Comfygen logo was not supplied; no replacement Comfygen logo was cr
 
 ## Validation
 
-- 18 unit/integration tests cover financial calculations, mixed GST, commission, cancellation, role checks, import identifiers, CSV parsing, XLSX round trips and collection date attribution.
+- 30 unit/integration tests cover financial calculations, mixed GST, commission, cancellation, role checks, import identifiers, CSV parsing, XLSX round trips and collection date attribution.
 - Browser smoke suites cover bill creation, refresh persistence, role restrictions, import preview/validation, automatic commission, partial payout, canvas drag-and-drop, template persistence, A4/thermal PDF downloads and print actions, and mobile overflow.
 - Production compilation and TypeScript checks are included in the build workflow.
 
 ## Dashboard UI update
 
 See [Dashboard changes](docs/DASHBOARD_CHANGES.md) for the file summary, interaction behaviour and boundaries. With the production server running (`npm run start`), `npm run test:dashboard` checks the requested four viewport sizes, keyboard flows, invoice presentation and automated WCAG A/AA rules. Artifacts are written under `/tmp/adventure-dashboard-review`. Production hides demo labels unless `NEXT_PUBLIC_DEMO_MODE=true`.
+
+## Billing POS update
+
+See [Billing POS changes](docs/BILLING_POS_CHANGES.md) for the simplified intake, payment/draft rules, shortcuts, corrected demo categories and file summary. Run `npm run test:pos` against a running production server to verify the keyboard workflow and four responsive sizes. The invoice calculation engine is unchanged.
+
+## Service images
+
+Service images can be uploaded, replaced and removed in Settings. Billing shows optimized thumbnails, with a remembered text-only preference and clean icon fallbacks. Invoice Designer controls whether service images print; the default is off. See [Service images](docs/SERVICE_IMAGES.md) for storage limits, changed files and `npm run test:images` validation.

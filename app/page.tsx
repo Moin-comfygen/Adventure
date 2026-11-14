@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
   Receipt,
@@ -20,7 +20,6 @@ import {
   Download,
   Printer,
   Check,
-  Trash2,
   Menu,
   LogOut,
   Wallet,
@@ -35,7 +34,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import {} from "recharts";
 import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -44,16 +42,13 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { readWorkbook } from "@/lib/workbook";
 import { Button } from "@/components/ui/button";
 import {
   State,
   Role,
   Module,
-  Line,
+  Customer,
   Invoice,
   Agent,
   Template,
@@ -64,7 +59,6 @@ import {
   seed,
   money,
   round,
-  calculate,
   createInvoice,
   allowed,
   requirePermission,
@@ -87,6 +81,14 @@ import {
 } from "@/components/workspace/command-palette";
 import { Dialog } from "@/components/ui/dialog";
 import { DashboardSkeleton } from "@/components/dashboard/skeleton";
+import { BillingPos } from "@/components/billing/billing-pos";
+import {
+  addDemoServiceImages,
+  correctDemoCategories,
+} from "@/lib/service-catalog";
+import { ServiceThumbnail } from "@/components/services/service-thumbnail";
+import { ServiceImageUpload } from "@/components/services/service-image-upload";
+import type { ServiceImages } from "@/lib/service-images";
 const icons = [
   LayoutDashboard,
   Receipt,
@@ -98,15 +100,6 @@ const icons = [
   ShieldCheck,
   Settings,
 ];
-const customerSchema = z.object({
-  name: z.string().min(2, "Enter a customer name"),
-  phone: z.string().regex(/^\+?[\d\s-]{10,15}$/, "Enter a valid mobile number"),
-  email: z.union([z.string().email(), z.literal("")]),
-  notes: z.string(),
-  gstin: z.string().optional(),
-  address: z.string().optional(),
-});
-type CustomerForm = z.infer<typeof customerSchema>;
 const today = () => new Date().toISOString().slice(0, 10);
 function SortableBlock({
   section,
@@ -165,6 +158,7 @@ export default function Home() {
   const [range, setRange] = useState("month");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const billingPreviewFocusRef = useRef(false);
   const [modal, setModal] = useState<Invoice | null>(null);
   const [reminderInvoice, setReminderInvoice] = useState<Invoice | null>(null);
   const [pdfRequest, setPdfRequest] = useState<string | null>(null);
@@ -174,15 +168,11 @@ export default function Home() {
   const [payout, setPayout] = useState("");
   const [payoutNote, setPayoutNote] = useState("");
   const [adjustment, setAdjustment] = useState(false);
-  const [serviceSearch, setServiceSearch] = useState("");
-  const [lines, setLines] = useState<Line[]>([]);
-  const [discount, setDiscount] = useState(0);
-  const [charges, setCharges] = useState(0);
-  const [agentId, setAgentId] = useState("");
-  const [interstate, setInterstate] = useState(false);
-  const [paymentRows, setPaymentRows] = useState([
-    { method: "UPI", amount: 0 },
-  ]);
+  const [newServiceImages, setNewServiceImages] = useState<ServiceImages>({});
+  const [newServiceImageBusy, setNewServiceImageBusy] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [billingDirty, setBillingDirty] = useState(false);
+  const [billingCustomer, setBillingCustomer] = useState<Customer | null>(null);
   const [report, setReport] = useState("Daily Sales Report");
   const [raw, setRaw] = useState<Record<string, unknown>[]>([]);
   const [fileName, setFileName] = useState("");
@@ -193,14 +183,13 @@ export default function Home() {
   const [selected, setSelected] = useState("b0");
   const [history, setHistory] = useState<Template[]>([]);
   const [redo, setRedo] = useState<Template[]>([]);
-  const form = useForm<CustomerForm>({
-    resolver: zodResolver(customerSchema),
-    defaultValues: { name: "", phone: "", email: "", notes: "" },
-  });
   useEffect(() => {
     try {
       const saved = localStorage.getItem("adventure-suite-v1");
       const initial: State = saved ? JSON.parse(saved) : seed();
+      initial.services = addDemoServiceImages(
+        correctDemoCategories(initial.services),
+      );
       setS(initial);
       setCollapsed(
         localStorage.getItem("adventure-sidebar-collapsed") === "true",
@@ -214,7 +203,18 @@ export default function Home() {
       if (r) {
         setRole(r);
         setLogged(true);
-        setPage(allowed(initial, r, "Dashboard") ? "Dashboard" : "Billing POS");
+        const previousPage = sessionStorage.getItem(
+          "adventure-last-page",
+        ) as Module | null;
+        setPage(
+          previousPage &&
+            modules.includes(previousPage) &&
+            allowed(initial, r, previousPage)
+            ? previousPage
+            : allowed(initial, r, "Dashboard")
+              ? "Dashboard"
+              : "Billing POS",
+        );
       }
     } catch (error) {
       console.error("Data initialization failed", error);
@@ -252,6 +252,7 @@ export default function Home() {
     function shortcut(event: KeyboardEvent) {
       if (
         logged &&
+        page !== "Billing POS" &&
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "k"
       ) {
@@ -262,7 +263,7 @@ export default function Home() {
     }
     document.addEventListener("keydown", shortcut);
     return () => document.removeEventListener("keydown", shortcut);
-  }, [logged]);
+  }, [logged, page]);
   useEffect(() => {
     if (!mobile) return;
     const returnTo = document.activeElement as HTMLElement;
@@ -296,7 +297,8 @@ export default function Home() {
     return () => {
       document.removeEventListener("keydown", keyboard);
       document.body.style.overflow = overflow;
-      returnTo?.focus();
+      if (returnTo?.isConnected && returnTo !== document.body) returnTo.focus();
+      else document.getElementById("customer-phone")?.focus();
     };
   }, [mobile]);
   useEffect(() => {
@@ -305,6 +307,8 @@ export default function Home() {
       document.querySelectorAll<HTMLElement>(".overlay .dialog"),
     ).at(-1);
     if (!container) return;
+    const returnToBilling = billingPreviewFocusRef.current;
+    billingPreviewFocusRef.current = false;
     const returnTo = document.activeElement as HTMLElement;
     const focusable = () =>
       Array.from(
@@ -337,7 +341,10 @@ export default function Home() {
     document.addEventListener("keydown", keyboard);
     return () => {
       document.removeEventListener("keydown", keyboard);
-      returnTo?.focus();
+      if (returnToBilling) document.getElementById("customer-phone")?.focus();
+      else if (returnTo?.isConnected && returnTo !== document.body)
+        returnTo.focus();
+      else document.getElementById("customer-phone")?.focus();
     };
   }, [modal?.id, agentView, !!agentEdit, importOpen]);
   const notify = (text: string) => setToast(text);
@@ -384,6 +391,16 @@ export default function Home() {
     round(list.reduce((a, i) => a + paid(i), 0));
   function navigate(m: Module) {
     if (!can(m)) return notify("Access restricted for this role.");
+    if (
+      page === "Billing POS" &&
+      m !== "Billing POS" &&
+      billingDirty &&
+      !window.confirm(
+        "Leave this unsaved bill? Its draft will be kept in this browser.",
+      )
+    )
+      return;
+    sessionStorage.setItem("adventure-last-page", m);
     setPage(m);
     setSearch("");
     setSalesFilter("all");
@@ -391,10 +408,22 @@ export default function Home() {
     setMobile(false);
   }
   function switchRole(r: Role) {
+    if (
+      page === "Billing POS" &&
+      billingDirty &&
+      !window.confirm(
+        "Switch roles and leave this unsaved bill? Its draft will be kept for this role.",
+      )
+    )
+      return;
     setRole(r);
     sessionStorage.setItem("adventure-role", r);
     setLogged(true);
-    setPage(allowed(state, r, "Dashboard") ? "Dashboard" : "Billing POS");
+    const nextPage = allowed(state, r, "Dashboard")
+      ? "Dashboard"
+      : "Billing POS";
+    setPage(nextPage);
+    sessionStorage.setItem("adventure-last-page", nextPage);
     setModal(null);
     setAgentView("");
     setImportOpen(false);
@@ -402,6 +431,16 @@ export default function Home() {
     setPdfRequest(null);
     setCommandOpen(false);
     setNotificationsOpen(false);
+  }
+  function persistServiceCatalog(next: State) {
+    try {
+      localStorage.setItem("adventure-suite-v1", JSON.stringify(next));
+    } catch {
+      throw Error(
+        "Browser storage is full or unavailable. Remove unused images or download a backup before adding more.",
+      );
+    }
+    setS(next);
   }
   function exportSales() {
     requirePermission(state, role, "Sales Management", "export");
@@ -446,53 +485,6 @@ export default function Home() {
       throw Error("Invoice outside permitted history.");
     setModal(i);
   }
-  function saveBill(print = false) {
-    form.handleSubmit((customer) =>
-      run(() => {
-        const next = createInvoice(state, role, {
-          customer: { ...customer, id: "" },
-          lines,
-          discount,
-          charges,
-          agentId,
-          interstate,
-          payments: paymentRows
-            .filter((p) => p.amount > 0)
-            .map((p) => ({ ...p, date: new Date().toISOString() })),
-        });
-        setS(next);
-        setLines([]);
-        setDiscount(0);
-        setCharges(0);
-        setAgentId("");
-        setPaymentRows([{ method: "UPI", amount: 0 }]);
-        form.reset();
-        notify(
-          "Invoice saved. Sales, customer records and agent ledger updated.",
-        );
-        if (print) setModal(next.invoices[next.invoices.length - 1]);
-      }),
-    )();
-  }
-  const billTotals = (() => {
-    try {
-      return calculate(
-        lines,
-        discount,
-        charges,
-        state.agents.find((a) => a.id === agentId),
-      );
-    } catch {
-      return {
-        subtotal: 0,
-        base: 0,
-        tax: 0,
-        total: 0,
-        commission: 0,
-        taxes: [],
-      };
-    }
-  })();
   const selectedAgent = state.agents.find((a) => a.id === agentView);
   const design = draft || state.templates[templateIndex];
   function updateDesign(next: Template) {
@@ -1065,7 +1057,14 @@ export default function Home() {
             <b>{page}</b>
           </div>
           <div className="header-right">
-            <span className="live-dot" />{" "}
+            {showDemoLabels && (
+              <span
+                className="live-dot"
+                role="img"
+                aria-label="Demo workspace active"
+                title="Demo workspace active"
+              />
+            )}
             {showDemoLabels && (
               <span className="demo-label">Demo workspace</span>
             )}
@@ -1107,6 +1106,14 @@ export default function Home() {
               className="icon-button"
               title="Sign out"
               onClick={() => {
+                if (
+                  page === "Billing POS" &&
+                  billingDirty &&
+                  !window.confirm(
+                    "Sign out and leave this unsaved bill? Its draft will be kept in this browser.",
+                  )
+                )
+                  return;
                 sessionStorage.removeItem("adventure-role");
                 setLogged(false);
               }}
@@ -1120,7 +1127,11 @@ export default function Home() {
             className={`page-heading ${page === "Dashboard" ? "dashboard-heading" : ""}`}
           >
             <div>
-              <div className="eyebrow">YOUR ADVENTURE, AT A GLANCE</div>
+              <div className="eyebrow">
+                {page === "Billing POS"
+                  ? "New bill"
+                  : "YOUR ADVENTURE, AT A GLANCE"}
+              </div>
               <h1>{page === "Dashboard" ? "Business overview" : page}</h1>
               <p>
                 {
@@ -1231,373 +1242,36 @@ export default function Home() {
             />
           )}
           {page === "Billing POS" && can("Billing POS") && (
-            <div className="pos-grid">
-              <div>
-                <section className="card">
-                  <div className="card-heading">
-                    <h3>01 · Customer details</h3>
-                    <span className="subtle-tag">Name & mobile required</span>
-                  </div>
-                  <label>
-                    Reuse an existing customer
-                    <input
-                      list="customer-list"
-                      placeholder="Search by name or mobile"
-                      onChange={(e) => {
-                        const c = state.customers.find(
-                          (c) => `${c.name} · ${c.phone}` === e.target.value,
-                        );
-                        if (c) form.reset(c);
-                      }}
-                    />
-                    <datalist id="customer-list">
-                      {state.customers.map((c) => (
-                        <option key={c.id} value={`${c.name} · ${c.phone}`} />
-                      ))}
-                    </datalist>
-                  </label>
-                  <div className="form-grid">
-                    <label>
-                      Customer name *<input {...form.register("name")} />
-                      <em>{form.formState.errors.name?.message}</em>
-                    </label>
-                    <label>
-                      Mobile number *<input {...form.register("phone")} />
-                      <em>{form.formState.errors.phone?.message}</em>
-                    </label>
-                    <label>
-                      Email
-                      <input {...form.register("email")} />
-                      <em>{form.formState.errors.email?.message}</em>
-                    </label>
-                    <label>
-                      Customer notes
-                      <input {...form.register("notes")} />
-                    </label>
-                    <label>
-                      Customer GSTIN (if applicable)
-                      <input {...form.register("gstin")} />
-                    </label>
-                    <label>
-                      Billing address (if applicable)
-                      <input {...form.register("address")} />
-                    </label>
-                  </div>
-                </section>
-                <section className="card">
-                  <div className="card-heading">
-                    <h3>02 · Choose an adventure</h3>
-                    <Mountain size={19} />
-                  </div>
-                  <div className="search-box">
-                    <Search size={17} />
-                    <input
-                      placeholder="Search activities…"
-                      value={serviceSearch}
-                      onChange={(e) => setServiceSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="service-grid">
-                    {state.services
-                      .filter((v) =>
-                        v.name
-                          .toLowerCase()
-                          .includes(serviceSearch.toLowerCase()),
-                      )
-                      .map((v) => (
-                        <button
-                          key={v.id}
-                          onClick={() =>
-                            setLines([
-                              ...lines,
-                              {
-                                serviceId: v.id,
-                                name: v.name,
-                                price: v.price,
-                                qty: 1,
-                                gst: v.gst,
-                                date: today(),
-                                slot: "",
-                              },
-                            ])
-                          }
-                        >
-                          <span className="activity-icon">
-                            <Mountain size={20} />
-                          </span>
-                          <b>{v.name}</b>
-                          <small>{v.category}</small>
-                          <strong>
-                            {money(v.price)} <span>+ {v.gst}% GST</span>
-                          </strong>
-                          <Plus size={16} className="service-plus" />
-                        </button>
-                      ))}
-                  </div>
-                </section>
-                <section className="card">
-                  <div className="card-heading">
-                    <h3>03 · Booking details</h3>
-                    <span>{lines.length} activities</span>
-                  </div>
-                  {!lines.length && (
-                    <div className="empty">
-                      Choose an activity to start a booking.
-                    </div>
-                  )}
-                  {lines.map((l, index) => (
-                    <div className="booking-line" key={index}>
-                      <b>{l.name}</b>
-                      <div className="form-grid">
-                        <label>
-                          Participants
-                          <input
-                            type="number"
-                            min="1"
-                            value={l.qty}
-                            onChange={(e) =>
-                              setLines(
-                                lines.map((v, j) =>
-                                  j === index
-                                    ? { ...v, qty: Number(e.target.value) }
-                                    : v,
-                                ),
-                              )
-                            }
-                          />
-                        </label>
-                        <label>
-                          Unit price
-                          <input
-                            type="number"
-                            min="0"
-                            value={l.price}
-                            onChange={(e) =>
-                              setLines(
-                                lines.map((v, j) =>
-                                  j === index
-                                    ? { ...v, price: Number(e.target.value) }
-                                    : v,
-                                ),
-                              )
-                            }
-                          />
-                        </label>
-                        <label>
-                          Activity date
-                          <input
-                            type="date"
-                            value={l.date}
-                            onChange={(e) =>
-                              setLines(
-                                lines.map((v, j) =>
-                                  j === index
-                                    ? { ...v, date: e.target.value }
-                                    : v,
-                                ),
-                              )
-                            }
-                          />
-                        </label>
-                        <label>
-                          Time slot
-                          <input
-                            type="time"
-                            value={l.slot}
-                            onChange={(e) =>
-                              setLines(
-                                lines.map((v, j) =>
-                                  j === index
-                                    ? { ...v, slot: e.target.value }
-                                    : v,
-                                ),
-                              )
-                            }
-                          />
-                        </label>
-                      </div>
-                      <button
-                        className="danger-link"
-                        onClick={() =>
-                          setLines(lines.filter((_, j) => j !== index))
-                        }
-                      >
-                        <Trash2 size={14} /> Remove
-                      </button>
-                    </div>
-                  ))}
-                </section>
-              </div>
-              <aside className="pos-summary card">
-                <h3>Booking summary</h3>
-                <label>
-                  Referral agent
-                  <input
-                    list="agent-list"
-                    placeholder="Search existing agents"
-                    value={
-                      state.agents.find((a) => a.id === agentId)?.name ||
-                      agentId
-                    }
-                    onChange={(e) =>
-                      setAgentId(
-                        state.agents.find((a) => a.name === e.target.value)
-                          ?.id || e.target.value,
-                      )
-                    }
-                  />
-                  <datalist id="agent-list">
-                    <option value="" />
-                    {state.agents
-                      .filter((a) => a.active)
-                      .map((a) => (
-                        <option key={a.id} value={a.name} />
-                      ))}
-                  </datalist>
-                </label>
-                <label>
-                  Discount (₹)
-                  <input
-                    type="number"
-                    min="0"
-                    value={discount}
-                    onChange={(e) => setDiscount(Number(e.target.value))}
-                  />
-                </label>
-                <label>
-                  Additional non-taxable charges (₹)
-                  <input
-                    type="number"
-                    min="0"
-                    value={charges}
-                    onChange={(e) => setCharges(Number(e.target.value))}
-                  />
-                </label>
-                <label className="check-label">
-                  <input
-                    type="checkbox"
-                    checked={interstate}
-                    onChange={(e) => setInterstate(e.target.checked)}
-                  />{" "}
-                  Interstate supply (IGST)
-                </label>
-                <div className="summary-lines">
-                  <div>
-                    Service subtotal <b>{money(billTotals.subtotal)}</b>
-                  </div>
-                  <div>
-                    Discount <b>− {money(discount)}</b>
-                  </div>
-                  <div>
-                    {interstate ? "IGST" : "CGST + SGST"}{" "}
-                    <b>{money(billTotals.tax)}</b>
-                  </div>
-                  <div>
-                    Additional charges <b>{money(charges)}</b>
-                  </div>
-                  <div className="grand">
-                    Grand total <strong>{money(billTotals.total)}</strong>
-                  </div>
-                </div>
-                {role !== "Receptionist" && agentId && (
-                  <div className="info-note">
-                    Agent commission: {money(billTotals.commission)}
-                    <br />
-                    Calculated on discounted services, excluding GST.
-                  </div>
-                )}
-                <h4>Payment details</h4>
-                {paymentRows.map((p, j) => (
-                  <div className="payment-row" key={j}>
-                    <select
-                      value={p.method}
-                      onChange={(e) =>
-                        setPaymentRows(
-                          paymentRows.map((v, k) =>
-                            k === j ? { ...v, method: e.target.value } : v,
-                          ),
-                        )
-                      }
-                    >
-                      {["Cash", "UPI", "Card", "Bank Transfer"].map((v) => (
-                        <option key={v}>{v}</option>
-                      ))}
-                    </select>
-                    <input
-                      aria-label="Payment amount"
-                      type="number"
-                      min="0"
-                      value={p.amount}
-                      onChange={(e) =>
-                        setPaymentRows(
-                          paymentRows.map((v, k) =>
-                            k === j
-                              ? { ...v, amount: Number(e.target.value) }
-                              : v,
-                          ),
-                        )
-                      }
-                    />
-                    <button
-                      aria-label="Remove payment"
-                      onClick={() =>
-                        setPaymentRows(paymentRows.filter((_, k) => k !== j))
-                      }
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                ))}
-                <div className="spread">
-                  <button
-                    className="link"
-                    onClick={() =>
-                      setPaymentRows([
-                        ...paymentRows,
-                        { method: "Cash", amount: 0 },
-                      ])
-                    }
-                  >
-                    + Split payment
-                  </button>
-                  <button
-                    className="link"
-                    onClick={() =>
-                      setPaymentRows([
-                        {
-                          method: paymentRows[0]?.method || "UPI",
-                          amount: billTotals.total,
-                        },
-                      ])
-                    }
-                  >
-                    Mark fully paid
-                  </button>
-                </div>
-                <p>
-                  Balance due{" "}
-                  <b>
-                    {money(
-                      billTotals.total -
-                        paymentRows.reduce((a, p) => a + p.amount, 0),
-                    )}
-                  </b>
-                </p>
-                <Button className="wide" onClick={() => saveBill(false)}>
-                  <Check size={17} /> Save bill
-                </Button>
-                <Button
-                  className="secondary wide"
-                  onClick={() => saveBill(true)}
-                >
-                  <Printer size={17} /> Save & preview / print
-                </Button>
-                <small className="muted">
-                  GST rates are configured per service. Verify applicable
-                  treatment before actual use.
-                </small>
-              </aside>
-            </div>
+            <BillingPos
+              blocked={!!modal || commandOpen || mobile}
+              onGlobalSearch={() => {
+                setMobile(false);
+                setCommandOpen((value) => !value);
+              }}
+              key={role}
+              onDirtyChange={setBillingDirty}
+              onPreview={(invoice) => {
+                billingPreviewFocusRef.current = true;
+                setFormat("A4");
+                setModal(invoice);
+              }}
+              state={state}
+              role={role}
+              customerRequest={billingCustomer}
+              onCustomerConsumed={() => setBillingCustomer(null)}
+              onNotify={notify}
+              onSave={(input, print) => {
+                const next = createInvoice(state, role, input);
+                setS(next);
+                const invoice = next.invoices[next.invoices.length - 1];
+                if (print) {
+                  billingPreviewFocusRef.current = true;
+                  setFormat("A4");
+                  setModal(invoice);
+                }
+                return invoice;
+              }}
+            />
           )}
           {page === "Sales Management" && can("Sales Management") && (
             <>
@@ -1919,7 +1593,24 @@ export default function Home() {
                               <button
                                 className="link"
                                 onClick={() => {
-                                  form.reset(c);
+                                  const key = `adventure-pos-draft-v1:${role}`;
+                                  try {
+                                    if (localStorage.getItem(key)) {
+                                      if (
+                                        !window.confirm(
+                                          "An unsaved bill is stored for this role. Discard it and start a new booking for this customer?",
+                                        )
+                                      )
+                                        return;
+                                      localStorage.removeItem(key);
+                                    }
+                                  } catch {
+                                    notify(
+                                      "Unable to check the saved draft. Open Billing POS to review it first.",
+                                    );
+                                    return;
+                                  }
+                                  setBillingCustomer(c);
                                   navigate("Billing POS");
                                 }}
                               >
@@ -2139,6 +1830,7 @@ export default function Home() {
                     <thead>
                       <tr>
                         <th>Activity</th>
+                        <th>Service image</th>
                         <th>Category</th>
                         <th>Unit price</th>
                         <th>GST rate (%)</th>
@@ -2148,6 +1840,30 @@ export default function Home() {
                       {state.services.map((v) => (
                         <tr key={v.id}>
                           <td>{v.name}</td>
+                          <td>
+                            <ServiceImageUpload
+                              name={v.name}
+                              category={v.category}
+                              value={v}
+                              disabled={!can("Settings", "edit")}
+                              onChange={(images) => {
+                                requirePermission(
+                                  state,
+                                  role,
+                                  "Settings",
+                                  "edit",
+                                );
+                                persistServiceCatalog({
+                                  ...state,
+                                  services: state.services.map((service) =>
+                                    service.id === v.id
+                                      ? { ...service, ...images }
+                                      : service,
+                                  ),
+                                });
+                              }}
+                            />
+                          </td>
                           <td>{v.category}</td>
                           <td>
                             <input
@@ -2223,7 +1939,7 @@ export default function Home() {
                         gst = Number(fd.get("gst"));
                       if (price < 0 || gst < 0 || gst > 100)
                         throw Error("Invalid price or GST");
-                      setS({
+                      persistServiceCatalog({
                         ...state,
                         services: [
                           ...state.services,
@@ -2233,14 +1949,23 @@ export default function Home() {
                             category: String(fd.get("category")),
                             price,
                             gst,
+                            ...newServiceImages,
                           },
                         ],
                       });
+                      setNewServiceImages({});
+                      setNewServiceName("");
                       notify("Service created");
                     });
                   }}
                 >
-                  <input name="name" placeholder="Activity name" required />
+                  <input
+                    name="name"
+                    placeholder="Activity name"
+                    required
+                    value={newServiceName}
+                    onChange={(event) => setNewServiceName(event.target.value)}
+                  />
                   <input name="category" placeholder="Category" required />
                   <input
                     name="price"
@@ -2257,7 +1982,15 @@ export default function Home() {
                     max="100"
                     required
                   />
-                  <Button>Add service</Button>
+                  <ServiceImageUpload
+                    name={newServiceName || "New service"}
+                    category=""
+                    value={newServiceImages}
+                    disabled={!can("Settings", "create")}
+                    onBusyChange={setNewServiceImageBusy}
+                    onChange={setNewServiceImages}
+                  />
+                  <Button disabled={newServiceImageBusy}>Add service</Button>
                 </form>
               </section>
               <section className="card">
@@ -2691,6 +2424,19 @@ export default function Home() {
                       </>
                     );
                   })()}
+                  <label className="check-label">
+                    <input
+                      type="checkbox"
+                      checked={!!design.includeServiceImages}
+                      onChange={(event) =>
+                        updateDesign({
+                          ...design,
+                          includeServiceImages: event.target.checked,
+                        })
+                      }
+                    />{" "}
+                    Include service images on invoices
+                  </label>
                   <label>
                     Receipt width
                     <select
@@ -3704,7 +3450,20 @@ function InvoiceContent({
                   <td key={c} data-column={c}>
                     {c === "Service" ? (
                       <>
-                        {l.name}
+                        <span className="invoice-service-name">
+                          {t.includeServiceImages && (
+                            <ServiceThumbnail
+                              service={
+                                s.services.find(
+                                  (service) => service.id === l.serviceId,
+                                ) || { name: l.name, category: "" }
+                              }
+                              size={36}
+                              loading="eager"
+                            />
+                          )}
+                          <span>{l.name}</span>
+                        </span>
                         <small>
                           {l.date} {l.slot} · GST {l.gst}%
                         </small>

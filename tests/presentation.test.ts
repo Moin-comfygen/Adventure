@@ -11,6 +11,7 @@ import {
 test("invoice presentation distinguishes zero, partial, paid and overdue balances", () => {
   const invoice = { ...seed().invoices[0], total: 100, payments: [] };
   assert.equal(invoiceStatus(invoice).label, "Unpaid");
+  assert.equal(invoiceStatus({ ...invoice, total: 0 }).label, "Unpaid");
   const partial = {
     ...invoice,
     payments: [{ method: "Cash", amount: 20, date: "2026-11-14" }],

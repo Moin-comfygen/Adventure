@@ -28,10 +28,11 @@ const { chromium } = require("playwright");
   await page
     .getByRole("button", { name: "River Rafting · 16 km", exact: false })
     .click();
+  await page.locator(".pos-adjustments summary").click();
   await page.getByLabel("Discount (₹)").fill("200");
   await page.getByPlaceholder("Search existing agents").fill("Rajeev Sharma");
-  await page.getByRole("button", { name: "Mark fully paid" }).click();
-  await page.getByRole("button", { name: "Save & preview / print" }).click();
+  await page.getByRole("button", { name: "Full payment", exact: true }).click();
+  await page.getByRole("button", { name: "Save & print" }).click();
   await page.getByRole("heading", { name: "Invoice ADV-00076" }).waitFor();
   await page.screenshot({ path: "/tmp/adventure-invoice.png", fullPage: true });
   await page.getByRole("button", { name: "Close", exact: true }).click();

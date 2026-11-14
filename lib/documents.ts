@@ -60,6 +60,14 @@ export async function invoicePdf(
   thermal = false,
   width = 80,
 ) {
+  const images = Array.from(element.querySelectorAll("img"));
+  await Promise.all(
+    images.map((image) => {
+      image.loading = "eager";
+      return image.decode().catch(() => undefined);
+    }),
+  );
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   const { default: html2canvas } = await import("html2canvas");
   const canvas = await html2canvas(element, {
     scale: 2,
