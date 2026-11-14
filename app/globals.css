@@ -4789,3 +4789,96 @@ header {
     font-size: 12px;
   }
 }
+
+/* Keep the summary usable at narrow widths, browser zoom and landscape heights. */
+.pos-workspace .pos-summary {
+  min-width: 0;
+  container: booking-summary / inline-size;
+  max-height: calc(100dvh - 32px);
+  align-self: start;
+}
+.pos-summary-heading,
+.pos-summary-scroll,
+.pos-save-actions {
+  min-width: 0;
+}
+.pos-summary-heading > div,
+.pos-summary .summary-lines > div,
+.pos-summary .pos-balance > div {
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.pos-summary-heading output,
+.pos-summary .summary-lines b,
+.pos-summary .pos-balance b,
+.pos-summary .pos-balance strong {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pos-summary-activities li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.pos-summary-activities li > div:first-child {
+  grid-column: 1 / 3;
+}
+.pos-summary-activities b,
+.pos-summary-activities small,
+.pos-summary-scroll .info-note,
+.pos-summary-scroll > small {
+  overflow-wrap: anywhere;
+}
+.pos-summary-scroll input,
+.pos-summary-scroll select {
+  min-width: 0;
+  max-width: 100%;
+}
+.pos-summary-scroll {
+  scrollbar-gutter: stable;
+}
+.pos-summary .payment-mode-chips button,
+.pos-summary .payment-segments button {
+  min-height: 44px;
+}
+.pos-summary .partial-quick {
+  flex-wrap: wrap;
+}
+@container booking-summary (max-width: 310px) {
+  .pos-summary-activities li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .pos-summary-activities strong {
+    grid-column: 1 / -1;
+    justify-self: end;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .payment-mode-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .save-button-wrap kbd {
+    display: none;
+  }
+}
+@media (max-width: 900px), (max-height: 700px) {
+  .pos-workspace .pos-summary {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .pos-summary-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+}
+@media (max-width: 570px) {
+  .pos-mobile-bar {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .pos-workspace {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+}
