@@ -229,7 +229,7 @@ const fs = require("node:fs");
     .locator("nav")
     .getByRole("button", { name: "Sales Management", exact: true })
     .click();
-  await page.getByRole("button", { name: "ADV-00076", exact: true }).click();
+  await page.getByRole("button", { name: "View ADV-00076", exact: true }).click();
   await page
     .locator("#print-invoice .service-thumbnail[data-image-state=loaded]")
     .waitFor();

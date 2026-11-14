@@ -13,7 +13,8 @@
     "lint": "eslint app components hooks lib tests next.config.ts",
     "test:dashboard": "node scripts/dashboard-check.cjs",
     "test:pos": "node scripts/pos-check.cjs",
-    "test:images": "node scripts/service-images-check.cjs"
+    "test:images": "node scripts/service-images-check.cjs",
+    "test:sales": "node scripts/sales-check.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.0",

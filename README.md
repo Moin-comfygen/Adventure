@@ -68,3 +68,5 @@ See [Billing POS changes](docs/BILLING_POS_CHANGES.md) for the simplified intake
 ## Service images
 
 Service images can be uploaded, replaced and removed in Settings. Billing shows optimized thumbnails, with a remembered text-only preference and clean icon fallbacks. Invoice Designer controls whether service images print; the default is off. See [Service images](docs/SERVICE_IMAGES.md) for storage limits, changed files and `npm run test:images` validation.
+
+Sales ledger and accounting report: see [docs/SALES_LEDGER.md](docs/SALES_LEDGER.md). Run `npm run test:sales` against the running app (`BASE_URL` can override its URL).

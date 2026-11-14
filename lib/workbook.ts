@@ -59,7 +59,7 @@ export async function readWorkbook(
   } else {
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(buffer);
-    const sheet = book.worksheets[0];
+    const sheet = book.getWorksheet("Sales Data") || book.worksheets[0];
     if (!sheet) throw Error("No worksheet");
     sheet.eachRow((row) => {
       const cells: unknown[] = [];

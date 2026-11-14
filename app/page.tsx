@@ -24,7 +24,6 @@ import {
   LogOut,
   Wallet,
   ArrowRight,
-  FileSpreadsheet,
   GripVertical,
   Undo2,
   Redo2,
@@ -42,7 +41,6 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { readWorkbook } from "@/lib/workbook";
 import { Button } from "@/components/ui/button";
 import {
   State,
@@ -81,6 +79,7 @@ import {
 } from "@/components/workspace/command-palette";
 import { Dialog } from "@/components/ui/dialog";
 import { DashboardSkeleton } from "@/components/dashboard/skeleton";
+import { SalesLedger } from "@/components/sales/sales-ledger";
 import { BillingPos } from "@/components/billing/billing-pos";
 import {
   addDemoServiceImages,
@@ -100,7 +99,6 @@ const icons = [
   ShieldCheck,
   Settings,
 ];
-const today = () => new Date().toISOString().slice(0, 10);
 function SortableBlock({
   section,
   children,
@@ -153,8 +151,6 @@ export default function Home() {
   const [readNotifications, setReadNotifications] = useState<string[]>([]);
   const [appInfo, setAppInfo] = useState<"help" | "news" | null>(null);
   const [search, setSearch] = useState("");
-  const [salesFilter, setSalesFilter] = useState("all");
-  const [salesPeriod, setSalesPeriod] = useState(false);
   const [range, setRange] = useState("month");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -173,11 +169,7 @@ export default function Home() {
   const [newServiceName, setNewServiceName] = useState("");
   const [billingDirty, setBillingDirty] = useState(false);
   const [billingCustomer, setBillingCustomer] = useState<Customer | null>(null);
-  const [report, setReport] = useState("Daily Sales Report");
-  const [raw, setRaw] = useState<Record<string, unknown>[]>([]);
-  const [fileName, setFileName] = useState("");
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [importOpen, setImportOpen] = useState(false);
+  const [report, setReport] = useState("Sales report");
   const [templateIndex, setTemplateIndex] = useState(0);
   const [draft, setDraft] = useState<Template | null>(null);
   const [selected, setSelected] = useState("b0");
@@ -302,7 +294,7 @@ export default function Home() {
     };
   }, [mobile]);
   useEffect(() => {
-    if (!modal && !agentView && !agentEdit && !importOpen) return;
+    if (!modal && !agentView && !agentEdit) return;
     const container = Array.from(
       document.querySelectorAll<HTMLElement>(".overlay .dialog"),
     ).at(-1);
@@ -324,7 +316,6 @@ export default function Home() {
         setModal(null);
         setAgentView("");
         setAgentEdit(null);
-        setImportOpen(false);
       }
       if (event.key === "Tab") {
         const items = focusable();
@@ -346,7 +337,7 @@ export default function Home() {
         returnTo.focus();
       else document.getElementById("customer-phone")?.focus();
     };
-  }, [modal?.id, agentView, !!agentEdit, importOpen]);
+  }, [modal?.id, agentView, !!agentEdit]);
   const notify = (text: string) => setToast(text);
   function run(fn: () => void) {
     try {
@@ -387,8 +378,6 @@ export default function Home() {
   );
   const revenue = (list: Invoice[]) =>
     round(list.reduce((a, i) => a + i.base + i.charges, 0));
-  const collections = (list: Invoice[]) =>
-    round(list.reduce((a, i) => a + paid(i), 0));
   function navigate(m: Module) {
     if (!can(m)) return notify("Access restricted for this role.");
     if (
@@ -403,8 +392,6 @@ export default function Home() {
     sessionStorage.setItem("adventure-last-page", m);
     setPage(m);
     setSearch("");
-    setSalesFilter("all");
-    setSalesPeriod(false);
     setMobile(false);
   }
   function switchRole(r: Role) {
@@ -426,7 +413,6 @@ export default function Home() {
     sessionStorage.setItem("adventure-last-page", nextPage);
     setModal(null);
     setAgentView("");
-    setImportOpen(false);
     setReminderInvoice(null);
     setPdfRequest(null);
     setCommandOpen(false);
@@ -437,53 +423,28 @@ export default function Home() {
       localStorage.setItem("adventure-suite-v1", JSON.stringify(next));
     } catch {
       throw Error(
-        "Browser storage is full or unavailable. Remove unused images or download a backup before adding more.",
+        "Browser storage is full or unavailable. Download a backup and free browser storage before saving more data.",
       );
     }
     setS(next);
   }
-  function exportSales() {
-    requirePermission(state, role, "Sales Management", "export");
-    spreadsheet(
-      filtered.map((i) => ({
-        "Invoice Number": i.id,
-        "Invoice Date": i.date,
-        "Customer Name": i.customer.name,
-        "Mobile Number": i.customer.phone,
-        Activity: i.lines.map((l) => l.name).join(", "),
-        Quantity: i.lines.reduce((a, l) => a + l.qty, 0),
-        Subtotal: i.subtotal,
-        Discount: i.discount,
-        GST: i.tax,
-        "Invoice Total": i.total,
-        "Amount Paid": paid(i),
-        "Balance Due": round(i.total - paid(i)),
-        Agent: state.agents.find((a) => a.id === i.agentId)?.name || "Direct",
-        Commission: i.commission,
-        "Payment Method": i.payments.map((p) => p.method).join(", "),
-        Status: i.status,
-      })),
-      "Adventure-Sales",
-    );
-  }
-  const filtered = invoices
-    .filter(
-      (i) =>
-        (!salesPeriod || inPeriod(i.date, range, from, to)) &&
-        (salesFilter !== "outstanding" ||
-          (i.status === "Active" && paid(i) < i.total)) &&
-        (!from || i.date.slice(0, 10) >= from) &&
-        (!to || i.date.slice(0, 10) <= to) &&
-        `${i.id} ${i.customer.name} ${i.customer.phone} ${i.lines.map((l) => l.name).join(" ")} ${i.status}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
   function openInvoice(i: Invoice) {
     requirePermission(state, role, "Sales Management", "print");
     if (role === "Receptionist" && i.createdBy !== role)
       throw Error("Invoice outside permitted history.");
     setModal(i);
+  }
+  function recordPayment(invoice: Invoice) {
+    openInvoice(invoice);
+    setTimeout(
+      () =>
+        document
+          .querySelector<HTMLInputElement>(
+            '.invoice-operations input[name="amount"]',
+          )
+          ?.focus(),
+      100,
+    );
   }
   const selectedAgent = state.agents.find((a) => a.id === agentView);
   const design = draft || state.templates[templateIndex];
@@ -492,108 +453,6 @@ export default function Home() {
     setHistory([...history, structuredClone(design)]);
     setRedo([]);
     setDraft(next);
-  }
-  const importFields = [
-    "externalId",
-    "name",
-    "phone",
-    "service",
-    "quantity",
-    "discount",
-    "paid",
-    "method",
-    "agent",
-    "date",
-  ];
-  function importRow(row: Record<string, unknown>, index: number, base: State) {
-    const val = (key: string) => String(row[mapping[key] || key] ?? "").trim();
-    const service = base.services.find(
-      (a) =>
-        a.name.toLowerCase() === val("service").toLowerCase() ||
-        a.id === val("service"),
-    );
-    if (!service) throw Error("Unknown service");
-    const agent = base.agents.find(
-      (a) =>
-        a.name.toLowerCase() === val("agent").toLowerCase() ||
-        a.id === val("agent"),
-    );
-    if (val("agent") && !agent) throw Error("Unknown agent");
-    if (!val("externalId")) throw Error("External sale ID required");
-    const date = val("date") || today();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date)))
-      throw Error("Date must be YYYY-MM-DD");
-    const method = val("method") || "Cash";
-    if (!["Cash", "UPI", "Card", "Bank Transfer"].includes(method))
-      throw Error("Unknown payment method");
-    return createInvoice(base, role, {
-      customer: {
-        id: "",
-        name: val("name"),
-        phone: val("phone"),
-        email: "",
-        notes: "",
-      },
-      lines: [
-        {
-          serviceId: service.id,
-          name: service.name,
-          price: service.price,
-          gst: service.gst,
-          qty: Number(val("quantity")),
-          date,
-          slot: "",
-        },
-      ],
-      discount: Number(val("discount") || 0),
-      charges: 0,
-      agentId: agent?.id || "",
-      interstate: false,
-      payments: [
-        { method, amount: Number(val("paid") || 0), date: date + "T10:00:00" },
-      ],
-      externalId: val("externalId"),
-      date: date + "T10:00:00",
-    });
-  }
-  let importPreview: { row: number; error: string }[] = [];
-  if (importOpen && raw.length && can("Sales Management", "create")) {
-    let next = state;
-    importPreview = raw.map((r, i) => {
-      try {
-        next = importRow(r, i, next);
-        return { row: i + 2, error: "" };
-      } catch (e) {
-        return { row: i + 2, error: (e as Error).message };
-      }
-    });
-  }
-  function confirmImport() {
-    requirePermission(state, role, "Sales Management", "create");
-    requirePermission(state, role, "Billing POS", "create");
-    let next = state;
-    let accepted = 0;
-    const errors: string[] = [];
-    raw.forEach((row, index) => {
-      try {
-        next = importRow(row, index, next);
-        accepted++;
-      } catch (e) {
-        errors.push(`Row ${index + 2}: ${(e as Error).message}`);
-      }
-    });
-    setS({
-      ...next,
-      imports: [
-        { date: new Date().toISOString(), file: fileName, accepted, errors },
-        ...next.imports,
-      ],
-    });
-    setRaw([]);
-    setImportOpen(false);
-    notify(
-      `${accepted} sales imported. ${errors.length} rows rejected; see import history.`,
-    );
   }
   const pendingInvoices = invoices.filter(
     (i) => i.status === "Active" && paid(i) < i.total,
@@ -1127,11 +986,13 @@ export default function Home() {
             className={`page-heading ${page === "Dashboard" ? "dashboard-heading" : ""}`}
           >
             <div>
-              <div className="eyebrow">
-                {page === "Billing POS"
-                  ? "New bill"
-                  : "YOUR ADVENTURE, AT A GLANCE"}
-              </div>
+              {page !== "Sales Management" && (
+                <div className="eyebrow">
+                  {page === "Billing POS"
+                    ? "New bill"
+                    : "YOUR ADVENTURE, AT A GLANCE"}
+                </div>
+              )}
               <h1>{page === "Dashboard" ? "Business overview" : page}</h1>
               <p>
                 {
@@ -1212,10 +1073,20 @@ export default function Home() {
               onNavigate={(module, filter) => {
                 navigate(module);
                 if (filter === "outstanding" || filter === "period") {
-                  setSalesFilter(
-                    filter === "outstanding" ? "outstanding" : "all",
+                  const bounds = periodBounds(range, from, to);
+                  const params = new URLSearchParams(location.search);
+                  params.set(
+                    "sales_metric",
+                    filter === "outstanding" ? "outstanding" : "count",
                   );
-                  setSalesPeriod(true);
+                  params.set("sales_period", "custom");
+                  params.set("sales_from", bounds?.start || "");
+                  params.set("sales_to", bounds?.end || "");
+                  window.history.replaceState(
+                    null,
+                    "",
+                    location.pathname + "?" + params,
+                  );
                 }
                 if (filter === "collections") {
                   setReport("Payment Collection Report");
@@ -1274,91 +1145,20 @@ export default function Home() {
             />
           )}
           {page === "Sales Management" && can("Sales Management") && (
-            <>
-              <div className="stats-grid">
-                {stat(
-                  "Invoices",
-                  String(invoices.length),
-                  "All permitted invoice records",
-                )}
-                {stat("Net revenue", money(revenue(active)), "Excludes GST")}
-                {stat(
-                  "Collections",
-                  money(collections(active)),
-                  "Payments received",
-                )}
-                {stat(
-                  "Outstanding",
-                  money(active.reduce((a, i) => a + i.total - paid(i), 0)),
-                  "Customer balances",
-                )}
-              </div>
-              <section className="card">
-                <div className="section-toolbar">
-                  <div className="search-box">
-                    <Search size={17} />
-                    <input
-                      placeholder="Search invoice, customer, activity or status…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="heading-actions">
-                    {dateFilters}
-                    {can("Sales Management", "create") && (
-                      <Button
-                        className="secondary"
-                        onClick={() => setImportOpen(true)}
-                      >
-                        <FileSpreadsheet size={16} /> Import sales
-                      </Button>
-                    )}
-                    {can("Sales Management", "export") && (
-                      <Button onClick={() => run(exportSales)}>
-                        <Download size={16} /> Export
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {(salesFilter !== "all" || salesPeriod) && (
-                  <div className="active-filter">
-                    <span>
-                      {salesFilter === "outstanding"
-                        ? "Unpaid & partially paid invoices"
-                        : "Invoices in selected dashboard period"}
-                    </span>
-                    <button
-                      className="link"
-                      onClick={() => {
-                        setSalesFilter("all");
-                        setSalesPeriod(false);
-                      }}
-                    >
-                      Clear filter <X size={14} />
-                    </button>
-                  </div>
-                )}
-                {salesTable(filtered)}
-              </section>
-              {state.imports.length > 0 && role !== "Receptionist" && (
-                <section className="card">
-                  <h3>Import history</h3>
-                  {state.imports.map((b, i) => (
-                    <details key={i}>
-                      <summary>
-                        {b.file} · {b.accepted} accepted · {b.errors.length}{" "}
-                        rejected · {new Date(b.date).toLocaleString("en-IN")}
-                      </summary>
-                      {b.errors.map((e, j) => (
-                        <p key={j} className="error">
-                          {e}
-                        </p>
-                      ))}
-                    </details>
-                  ))}
-                </section>
-              )}
-            </>
+            <SalesLedger
+              state={state}
+              role={role}
+              onState={persistServiceCatalog}
+              onView={openInvoice}
+              onPdf={(i) => {
+                setModal(i);
+                setFormat("A4");
+                setPdfRequest(i.id);
+              }}
+              onPayment={recordPayment}
+              onReminder={setReminderInvoice}
+              notify={notify}
+            />
           )}
           {page === "Agents & Commissions" && can("Agents & Commissions") && (
             <>
@@ -1636,6 +1436,7 @@ export default function Home() {
                       onChange={(e) => setReport(e.target.value)}
                     >
                       {[
+                        "Sales report",
                         "Daily Sales Report",
                         "Monthly Sales Report",
                         "Yearly Sales Report",
@@ -1651,66 +1452,101 @@ export default function Home() {
                       ))}
                     </select>
                   </label>
-                  {dateFilters}
-                  <div className="heading-actions">
-                    <Button
-                      className="secondary"
-                      onClick={() =>
-                        run(() => {
-                          requirePermission(state, role, "Reports", "export");
-                          spreadsheet(reportData, report);
-                        })
-                      }
-                    >
-                      <Download size={16} /> Excel
-                    </Button>
-                    <Button
-                      onClick={() =>
-                        run(() => {
-                          requirePermission(state, role, "Reports", "export");
-                          pdf(
-                            report,
-                            reportData.map((row) =>
-                              Object.entries(row)
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(" | "),
-                            ),
-                          );
-                        })
-                      }
-                    >
-                      Download PDF
-                    </Button>
-                  </div>
+                  {report !== "Sales report" && (
+                    <>
+                      {dateFilters}
+                      <div className="heading-actions">
+                        <Button
+                          className="secondary"
+                          onClick={() =>
+                            run(() => {
+                              requirePermission(
+                                state,
+                                role,
+                                "Reports",
+                                "export",
+                              );
+                              spreadsheet(reportData, report);
+                            })
+                          }
+                        >
+                          <Download size={16} /> Excel
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            run(() => {
+                              requirePermission(
+                                state,
+                                role,
+                                "Reports",
+                                "export",
+                              );
+                              pdf(
+                                report,
+                                reportData.map((row) =>
+                                  Object.entries(row)
+                                    .map(([k, v]) => `${k}: ${v}`)
+                                    .join(" | "),
+                                ),
+                              );
+                            })
+                          }
+                        >
+                          Download PDF
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <p className="info-note">
-                  Revenue = discounted service value + non-taxable additional
-                  charges, excluding GST. Cancelled and refunded invoices are
-                  excluded. Tax reports require validation before statutory
-                  filing. Commission settlements and import history show
-                  all-time records.
-                </p>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        {Object.keys(reportData[0] || {}).map((k) => (
-                          <th key={k}>{k}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.map((row, i) => (
-                        <tr key={i}>
-                          {Object.values(row).map((v, j) => (
-                            <td key={j}>{String(v)}</td>
+                {report !== "Sales report" && (
+                  <>
+                    <p className="info-note">
+                      Revenue = discounted service value + non-taxable
+                      additional charges, excluding GST. Cancelled and refunded
+                      invoices are excluded. Tax reports require validation
+                      before statutory filing. Commission settlements and import
+                      history show all-time records.
+                    </p>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            {Object.keys(reportData[0] || {}).map((k) => (
+                              <th key={k}>{k}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.map((row, i) => (
+                            <tr key={i}>
+                              {Object.values(row).map((v, j) => (
+                                <td key={j}>{String(v)}</td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </section>
+              {report === "Sales report" && (
+                <SalesLedger
+                  report
+                  state={state}
+                  role={role}
+                  onState={persistServiceCatalog}
+                  onView={openInvoice}
+                  onPdf={(i) => {
+                    setModal(i);
+                    setFormat("A4");
+                    setPdfRequest(i.id);
+                  }}
+                  onPayment={recordPayment}
+                  onReminder={setReminderInvoice}
+                  notify={notify}
+                />
+              )}
             </>
           )}
           {page === "Team & Permissions" && can("Team & Permissions") && (
@@ -3005,143 +2841,6 @@ export default function Home() {
           </section>
         </div>
       )}
-      {importOpen && can("Sales Management", "create") && (
-        <div className="overlay">
-          <section
-            className="dialog large"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Workspace details"
-          >
-            <div className="card-heading">
-              <h2>Import sales</h2>
-              <button aria-label="Close" onClick={() => setImportOpen(false)}>
-                <X />
-              </button>
-            </div>
-            <p>
-              Upload XLSX or CSV, map columns, and review every row. Prices and
-              GST use the current service catalog. Use ISO dates (YYYY-MM-DD).
-              External sale IDs prevent repeated imports.
-            </p>
-            <Button
-              className="secondary"
-              onClick={() =>
-                spreadsheet(
-                  [
-                    {
-                      externalId: "EXT-001",
-                      name: "Amit Sharma",
-                      phone: "9876543210",
-                      service: state.services[0].name,
-                      quantity: 2,
-                      discount: 200,
-                      paid: 1000,
-                      method: "UPI",
-                      agent: "Rajeev Sharma",
-                      date: today(),
-                    },
-                  ],
-                  "Adventure-import-template",
-                )
-              }
-            >
-              Download sample Excel template
-            </Button>
-            <label>
-              Sales spreadsheet
-              <input
-                type="file"
-                accept=".xlsx,.csv"
-                onChange={(e) =>
-                  run(() => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    setFileName(f.name);
-                    f.arrayBuffer().then(async (buffer) => {
-                      try {
-                        const rows = await readWorkbook(buffer, f.name);
-                        if (rows.length > 1000)
-                          return notify("Import up to 1,000 rows per batch");
-                        setRaw(rows);
-                        setMapping(
-                          Object.fromEntries(
-                            importFields.map((k) => [
-                              k,
-                              Object.keys(rows[0] || {}).find(
-                                (h) => h.toLowerCase() === k.toLowerCase(),
-                              ) || k,
-                            ]),
-                          ),
-                        );
-                      } catch {
-                        notify("Could not read this spreadsheet");
-                      }
-                    });
-                  })
-                }
-              />
-            </label>
-            {raw.length > 0 && (
-              <>
-                <div className="form-grid">
-                  {importFields.map((field) => (
-                    <label key={field}>
-                      {field}
-                      <select
-                        value={mapping[field] || ""}
-                        onChange={(e) =>
-                          setMapping({ ...mapping, [field]: e.target.value })
-                        }
-                      >
-                        <option value="">Not mapped</option>
-                        {Object.keys(raw[0]).map((key) => (
-                          <option key={key}>{key}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <h3>
-                  Review {raw.length} rows ·{" "}
-                  {importPreview.filter((r) => !r.error).length} valid
-                </h3>
-                <div className="table-wrap import-preview">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Row</th>
-                        <th>Customer / Service</th>
-                        <th>Validation</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importPreview.map((r, i) => (
-                        <tr key={i}>
-                          <td>{r.row}</td>
-                          <td>
-                            {String(raw[i][mapping.name])} /{" "}
-                            {String(raw[i][mapping.service])}
-                          </td>
-                          <td className={r.error ? "error" : ""}>
-                            {r.error || "Ready to import"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <Button
-                  onClick={() => run(confirmImport)}
-                  disabled={!importPreview.some((r) => !r.error)}
-                >
-                  Confirm import of valid records
-                </Button>
-              </>
-            )}
-          </section>
-        </div>
-      )}
       {modal && can("Sales Management", "print") && (
         <div className="overlay print-overlay">
           <section
@@ -3335,7 +3034,17 @@ export default function Home() {
                               )
                             )
                               return;
-                            const updated = { ...modal, status };
+                            const refundReason =
+                              status === "Refunded"
+                                ? window.prompt("Reason for full refund")
+                                : undefined;
+                            if (status === "Refunded" && !refundReason?.trim())
+                              return;
+                            const updated = {
+                              ...modal,
+                              status,
+                              refundReason: refundReason?.trim(),
+                            };
                             setS({
                               ...state,
                               invoices: state.invoices.map((i) =>

@@ -67,6 +67,7 @@ export type Line = {
 };
 export type Payment = { method: string; amount: number; date: string };
 export type Invoice = {
+  refundReason?: string;
   id: string;
   externalId?: string;
   date: string;
@@ -128,7 +129,20 @@ export type State = {
   customers: Customer[];
   invoices: Invoice[];
   payouts: Payout[];
-  imports: { date: string; file: string; accepted: number; errors: string[] }[];
+  audit?: { date: string; user: Role; action: string; detail: string }[];
+  imports: {
+    date: string;
+    file: string;
+    accepted: number;
+    errors: string[];
+    id?: string;
+    user?: Role;
+    created?: number;
+    skipped?: number;
+    failed?: number;
+    undone?: boolean;
+    undo?: import("./sales-import").ImportUndo;
+  }[];
   templates: Template[];
   defaultTemplate: number;
   permissions: Record<string, boolean>;

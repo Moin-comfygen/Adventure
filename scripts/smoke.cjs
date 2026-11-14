@@ -24,17 +24,20 @@ const fs = require("fs");
   await p.getByRole("button", { name: "Import sales", exact: true }).click();
   fs.writeFileSync(
     "/tmp/adventure-import.csv",
-    "externalId,name,phone,service,quantity,discount,paid,method,agent,date\nBROWSER-IMPORT,Import Guest,9876543212,s0,2,200,1000,UPI,Rajeev Sharma,2026-11-14\nBROWSER-IMPORT,Duplicate Guest,9876543212,s0,2,0,0,Cash,,2026-11-14\nBAD,Unknown Guest,9876543213,Unknown,1,0,0,Cash,,2026-11-14",
+    "Invoice Ref,Invoice Date,Customer Name,Mobile,Activity,Participants,Discount (INR),Amount Paid,Payment Mode,Referral Agent\nBROWSER-IMPORT,14/11/2026,Import Guest,9876543212,River Rafting · 16 km,2,200,1000,UPI,Rajeev Sharma\nBROWSER-BAD-001,14/11/2026,Invalid Guest,9876543212,River Rafting · 16 km,0,0,0,Cash,\nBAD,14/11/2026,Unknown Guest,9876543213,Unknown,1,0,0,Cash,",
   );
+  await p.getByRole("button", { name: "Continue to upload" }).click();
   await p
     .getByLabel("Sales spreadsheet")
     .setInputFiles("/tmp/adventure-import.csv");
   await p.waitForTimeout(1000);
-  await p.getByRole("heading", { name: "Review 3 rows · 1 valid" }).waitFor();
+  await p.getByRole("checkbox", { name: /Import valid rows only/ }).check();
   await p
-    .getByRole("button", { name: "Confirm import of valid records" })
+    .getByRole("button", { name: "Confirm import · 1 valid invoice" })
     .click();
-  await p.getByRole("button", { name: "ADV-00076", exact: true }).waitFor();
+  await p
+    .getByRole("button", { name: "View ADV-00076", exact: true })
+    .waitFor();
   let saved = await p.evaluate(() =>
     JSON.parse(localStorage.getItem("adventure-suite-v1")),
   );
@@ -94,7 +97,7 @@ const fs = require("fs");
     .locator("nav")
     .getByRole("button", { name: "Sales Management", exact: true })
     .click();
-  await p.getByRole("button", { name: "ADV-00076", exact: true }).click();
+  await p.getByRole("button", { name: "View ADV-00076", exact: true }).click();
   const pdf = await Promise.all([
     p.waitForEvent("download"),
     p.getByRole("button", { name: "PDF", exact: true }).click(),
