@@ -15,7 +15,7 @@ export function InvoiceReminder({
   onWhatsApp?: (message: string) => void;
 }) {
   const [message, setMessage] = useState(
-    `Hello ${invoice.customer.name}, a friendly reminder that ${money(invoice.total - paid(invoice))} is pending for invoice ${invoice.id} with ${business}. Please contact us to arrange payment. Thank you!`,
+    `Hello ${invoice.customer.name}, greetings from ${business}!\nThank you for visiting us.\nA friendly reminder that ${money(invoice.total - paid(invoice))} is pending for invoice ${invoice.id} with ${business}. Please contact us to arrange payment. Thank you!`,
   );
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
+  CalendarDays,
   LayoutDashboard,
   Receipt,
   CreditCard,
@@ -72,6 +73,8 @@ import { DateRangePicker } from "@/components/date-range-picker";
 import { pluralize, initials, showDemoLabels } from "@/lib/presentation";
 import { Overview, PeriodTabs } from "@/components/dashboard/overview";
 import { periodBounds } from "@/lib/dashboard-presentation";
+import { useBookingReceipts } from "@/hooks/use-booking-receipts";
+import { BookingManager } from "@/components/bookings/booking-manager";
 import { InvoiceWhatsApp } from "@/components/invoice-whatsapp";
 import { InvoiceReminder } from "@/components/invoice-reminder";
 import {
@@ -99,6 +102,7 @@ const icons = [
   ChartNoAxesCombined,
   ShieldCheck,
   Settings,
+  CalendarDays,
 ];
 function SortableBlock({
   section,
@@ -143,6 +147,7 @@ export default function Home() {
   const [s, setS] = useState<State | null>(null);
   const [role, setRole] = useState<Role>("Super Admin");
   const [logged, setLogged] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState(false);
   const [page, setPage] = useState<Module>("Dashboard");
   const [toast, setToast] = useState("");
   const [mobile, setMobile] = useState(false);
@@ -158,6 +163,7 @@ export default function Home() {
   const billingPreviewFocusRef = useRef(false);
   const [modal, setModal] = useState<Invoice | null>(null);
   const [reminderInvoice, setReminderInvoice] = useState<Invoice | null>(null);
+  const [bookingToCollect, setBookingToCollect] = useState("");
   const [shareRequest, setShareRequest] = useState<{
     id: string;
     message?: string;
@@ -180,6 +186,12 @@ export default function Home() {
   const [selected, setSelected] = useState("b0");
   const [history, setHistory] = useState<Template[]>([]);
   const [redo, setRedo] = useState<Template[]>([]);
+  useBookingReceipts(
+    logged,
+    role + ":" + page,
+    syncBookingReceipts,
+    syncBookingBranding,
+  );
   useEffect(() => {
     try {
       const saved = localStorage.getItem("adventure-suite-v1");
@@ -361,6 +373,18 @@ export default function Home() {
       <DashboardSkeleton />
     );
   const state = s;
+  const invoiceState = modal?.businessSnapshot
+    ? {
+        ...state,
+        business: modal.businessSnapshot,
+        services: modal.customerBookingId
+          ? state.bookingBranding?.services || state.services
+          : state.services,
+      }
+    : state;
+  const invoiceTemplate =
+    (modal?.customerBookingId ? state.bookingBranding?.template : undefined) ||
+    state.templates[state.defaultTemplate];
   const can = (m: Module, a: Action = "view") => allowed(state, role, m, a);
   const invoices = can("Sales Management") ? visibleInvoices(state, role) : [];
   const active = invoices.filter((i) => i.status === "Active");
@@ -400,7 +424,7 @@ export default function Home() {
     setSearch("");
     setMobile(false);
   }
-  function switchRole(r: Role) {
+  async function switchRole(r: Role) {
     if (
       page === "Billing POS" &&
       billingDirty &&
@@ -409,7 +433,19 @@ export default function Home() {
       )
     )
       return;
+    setSwitchingRole(true);
+    try {
+      const response = await fetch("/api/booking-staff/session", {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Booking session could not be closed");
+    } catch {
+      setSwitchingRole(false);
+      notify("Could not lock the booking queue. Please retry changing roles.");
+      return;
+    }
     setRole(r);
+    setSwitchingRole(false);
     sessionStorage.setItem("adventure-role", r);
     setLogged(true);
     const nextPage = allowed(state, r, "Dashboard")
@@ -437,7 +473,11 @@ export default function Home() {
   }
   function openInvoice(i: Invoice) {
     requirePermission(state, role, "Sales Management", "print");
-    if (role === "Receptionist" && i.createdBy !== role)
+    if (
+      role === "Receptionist" &&
+      i.createdBy !== role &&
+      !(i.customerBookingId && page === "Customer Bookings")
+    )
       throw Error("Invoice outside permitted history.");
     setModal(i);
     setShareRequest(null);
@@ -451,6 +491,13 @@ export default function Home() {
     setShareRequest({ id: currentInvoice.id, message });
   }
   function recordPayment(invoice: Invoice) {
+    if (invoice.customerBookingId) {
+      setModal(null);
+      setShareRequest(null);
+      setBookingToCollect(invoice.customerBookingId);
+      navigate("Customer Bookings");
+      return;
+    }
     openInvoice(invoice);
     setTimeout(
       () =>
@@ -461,6 +508,67 @@ export default function Home() {
           ?.focus(),
       100,
     );
+  }
+  function syncBookingBranding(
+    branding: NonNullable<State["bookingBranding"]>,
+  ) {
+    setS((current) =>
+      current &&
+      JSON.stringify(current.bookingBranding) !== JSON.stringify(branding)
+        ? { ...current, bookingBranding: branding }
+        : current,
+    );
+  }
+  function syncBookingReceipts(invoices: Invoice[]) {
+    setS((current) => {
+      if (!current) return current;
+      let changed = false;
+      const next = {
+        ...current,
+        invoices: [...current.invoices],
+        customers: [...current.customers],
+      };
+      for (const remote of invoices) {
+        const customer = next.customers.find(
+          (c) =>
+            c.phone.replace(/\D/g, "").slice(-10) ===
+            remote.customer.phone.replace(/\D/g, "").slice(-10),
+        );
+        const invoice = {
+          ...remote,
+          customer: {
+            ...remote.customer,
+            id: customer?.id || remote.customer.id,
+          },
+        };
+        const index = next.invoices.findIndex(
+          (i) => i.id === invoice.id || i.externalId === invoice.externalId,
+        );
+        if (
+          index >= 0 &&
+          (next.invoices[index].customerBookingVersion || 0) >
+            (invoice.customerBookingVersion || 0)
+        )
+          continue;
+        if (index < 0) {
+          next.invoices.push(invoice);
+          changed = true;
+        } else if (
+          JSON.stringify(next.invoices[index]) !== JSON.stringify(invoice)
+        ) {
+          next.invoices[index] = invoice;
+          changed = true;
+        }
+        const customerIndex = next.customers.findIndex(
+          (c) => c.id === invoice.customer.id,
+        );
+        if (customerIndex < 0) {
+          next.customers.push(invoice.customer);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
   }
   const selectedAgent = state.agents.find((a) => a.id === agentView);
   const design = draft || state.templates[templateIndex];
@@ -685,6 +793,10 @@ export default function Home() {
                         aria-label={`Record payment for ${i.id}`}
                         onClick={() =>
                           run(() => {
+                            if (i.customerBookingId) {
+                              recordPayment(i);
+                              return;
+                            }
                             openInvoice(i);
                             setTimeout(() => {
                               (
@@ -789,8 +901,9 @@ export default function Home() {
               )}
             </select>
           </label>
-          <Button onClick={() => switchRole(role)}>
-            Enter workspace <ArrowRight size={17} />
+          <Button disabled={switchingRole} onClick={() => switchRole(role)}>
+            {switchingRole ? "Opening workspace…" : "Enter workspace"}{" "}
+            <ArrowRight size={17} />
           </Button>
           <small>
             Interactive local prototype. Demo role switching is not production
@@ -863,6 +976,7 @@ export default function Home() {
               return (
                 <button
                   key={m}
+                  disabled={switchingRole}
                   onClick={() => navigate(m)}
                   className={page === m ? "active" : ""}
                   title={m}
@@ -967,6 +1081,7 @@ export default function Home() {
             <div className="header-divider" />
             <span className="avatar navy">AS</span>
             <select
+              disabled={switchingRole}
               aria-label="Switch demo role"
               value={role}
               onChange={(e) => switchRole(e.target.value as Role)}
@@ -980,7 +1095,7 @@ export default function Home() {
             <button
               className="icon-button"
               title="Sign out"
-              onClick={() => {
+              onClick={async () => {
                 if (
                   page === "Billing POS" &&
                   billingDirty &&
@@ -989,6 +1104,16 @@ export default function Home() {
                   )
                 )
                   return;
+                try {
+                  await fetch("/api/booking-staff/session", {
+                    method: "DELETE",
+                  });
+                } catch {
+                  notify(
+                    "Could not lock the booking queue. Please retry signing out.",
+                  );
+                  return;
+                }
                 sessionStorage.removeItem("adventure-role");
                 setLogged(false);
               }}
@@ -1029,6 +1154,8 @@ export default function Home() {
                     "Team & Permissions":
                       "The right access for every member of your team.",
                     Settings: "Your business, configured your way.",
+                    "Customer Bookings":
+                      "Share a booking link, see customer requests and collect payment at reception.",
                   }[page]
                 }
               </p>
@@ -1158,6 +1285,21 @@ export default function Home() {
                   setModal(invoice);
                 }
                 return invoice;
+              }}
+            />
+          )}
+          {page === "Customer Bookings" && can("Customer Bookings") && (
+            <BookingManager
+              state={state}
+              role={role}
+              onReceipts={syncBookingReceipts}
+              onBranding={syncBookingBranding}
+              focusBookingId={bookingToCollect}
+              onView={(invoice) => {
+                requirePermission(state, role, "Sales Management", "print");
+                setModal(invoice);
+                setFormat("A4");
+                setShareRequest(null);
               }}
             />
           )}
@@ -2508,7 +2650,9 @@ export default function Home() {
       {reminderInvoice && can("Sales Management", "edit") && (
         <InvoiceReminder
           invoice={reminderInvoice}
-          business={state.business.name}
+          business={
+            reminderInvoice.businessSnapshot?.name || state.business.name
+          }
           onWhatsApp={
             can("Sales Management", "print")
               ? (message) => {
@@ -2916,7 +3060,7 @@ export default function Home() {
                     className={format === "Thermal" ? "selected" : ""}
                     onClick={() => setFormat("Thermal")}
                   >
-                    Thermal {state.templates[state.defaultTemplate].width}mm
+                    Thermal {invoiceTemplate.width}mm
                   </button>
                 </div>
                 <div className="heading-actions">
@@ -2940,7 +3084,7 @@ export default function Home() {
                           document.getElementById("print-invoice")!,
                           modal.id,
                           format === "Thermal",
-                          Number(state.templates[state.defaultTemplate].width),
+                          Number(invoiceTemplate.width),
                         ).catch((e) =>
                           notify("PDF generation failed: " + e.message),
                         );
@@ -2972,7 +3116,7 @@ export default function Home() {
                 <InvoiceWhatsApp
                   key={`${modal.id}-${modal.status}-${paid(modal)}`}
                   invoice={modal}
-                  business={state.business.name}
+                  business={invoiceState.business.name}
                   message={shareRequest.message}
                   onClose={() => setShareRequest(null)}
                 />
@@ -2984,19 +3128,19 @@ export default function Home() {
               style={
                 format === "Thermal"
                   ? {
-                      width: `${state.templates[state.defaultTemplate].width}mm`,
+                      width: `${invoiceTemplate.width}mm`,
                     }
                   : undefined
               }
             >
-              {state.templates[state.defaultTemplate].logo && (
+              {invoiceTemplate.logo && (
                 <img
-                  src={state.templates[state.defaultTemplate].logo}
+                  src={invoiceTemplate.logo}
                   alt="Business logo"
                   className="invoice-logo"
                 />
               )}
-              {state.templates[state.defaultTemplate].sections
+              {invoiceTemplate.sections
                 .filter((b) => b.visible)
                 .map((b) => (
                   <div
@@ -3012,9 +3156,9 @@ export default function Home() {
                   >
                     <InvoiceSection
                       section={b}
-                      s={state}
+                      s={invoiceState}
                       invoice={modal}
-                      template={state.templates[state.defaultTemplate]}
+                      template={invoiceTemplate}
                     />
                   </div>
                 ))}
@@ -3032,7 +3176,27 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {modal.status === "Active" &&
+              {modal.customerBookingId &&
+                paid(modal) < modal.total &&
+                can("Customer Bookings", "create") && (
+                  <div className="invoice-paid-notice">
+                    <div>
+                      <strong>Customer booking · Pay at reception</strong>
+                      <p>
+                        Collect the remaining {money(modal.total - paid(modal))}{" "}
+                        in the shared booking queue.
+                      </p>
+                      <Button
+                        className="secondary"
+                        onClick={() => recordPayment(modal)}
+                      >
+                        Collect payment at reception
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              {!modal.customerBookingId &&
+                modal.status === "Active" &&
                 paid(modal) < modal.total &&
                 can("Sales Management", "edit") && (
                   <div>
@@ -3101,7 +3265,8 @@ export default function Home() {
                     </form>
                   </div>
                 )}
-              {modal.status === "Active" &&
+              {!modal.customerBookingId &&
+                modal.status === "Active" &&
                 can("Sales Management", "cancel") && (
                   <div className="heading-actions">
                     {(["Cancelled", "Refunded"] as const).map((status) => (

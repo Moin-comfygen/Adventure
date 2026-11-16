@@ -1,3 +1,5 @@
+> Updated behavior: invoice sharing now always opens the billing number directly, with a short business greeting. Native recipient selection has been removed at the user’s request. The PDF downloads and must be attached in that customer’s chat. See [CUSTOMER_BOOKINGS.md](CUSTOMER_BOOKINGS.md) for current behavior.
+
 # WhatsApp invoice PDFs
 
 The saved-bill WhatsApp action, invoice preview’s “WhatsApp PDF”, and payment reminder’s “WhatsApp with invoice PDF” use one PDF-sharing flow. Existing invoice print permissions and receptionist history restrictions still apply.

@@ -17,6 +17,9 @@ const fs = require("node:fs");
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(process.env.BASE_URL || "http://127.0.0.1:3000");
   await page.getByRole("button", { name: "Enter workspace" }).click();
+  await page
+    .getByRole("heading", { name: "Business overview", exact: true })
+    .waitFor();
   await page.keyboard.press("Control+k");
   await page
     .getByRole("combobox", {

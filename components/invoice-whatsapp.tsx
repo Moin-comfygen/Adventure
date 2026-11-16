@@ -1,10 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, MessageCircle, X } from "lucide-react";
 import { Invoice } from "@/lib/model";
 import { invoicePdfFile } from "@/lib/documents";
 import {
-  canShareInvoiceFile,
   downloadInvoiceFile,
   invoiceShareMessage,
   whatsappInvoiceUrl,
@@ -23,10 +22,7 @@ export function InvoiceWhatsApp({
   const [file, setFile] = useState<File | null>(null),
     [error, setError] = useState(""),
     [status, setStatus] = useState(""),
-    [sharing, setSharing] = useState(false),
-    [fallback, setFallback] = useState(false),
     [retry, setRetry] = useState(0);
-  const sharingRef = useRef(false);
   const message = customMessage || invoiceShareMessage(invoice, business);
   let url = "";
   try {
@@ -39,7 +35,6 @@ export function InvoiceWhatsApp({
     setFile(null);
     setError("");
     setStatus("");
-    setFallback(false);
     const element = document.getElementById("print-invoice");
     if (!element) {
       setError("Invoice preview is not ready. Please try again.");
@@ -57,34 +52,6 @@ export function InvoiceWhatsApp({
       cancelled = true;
     };
   }, [invoice, business, retry]);
-  const native = file && !fallback && canShareInvoiceFile(file);
-  async function share() {
-    if (!file || sharingRef.current) return;
-    sharingRef.current = true;
-    setSharing(true);
-    setError("");
-    setStatus("");
-    try {
-      await navigator.share({
-        files: [file],
-        title: `Invoice ${invoice.id}`,
-        text: message,
-      });
-      setStatus("Share sheet completed. Check WhatsApp to confirm delivery.");
-    } catch (e) {
-      if (e instanceof Error && e.name === "AbortError")
-        setStatus("Sharing cancelled. You can try again.");
-      else {
-        setFallback(true);
-        setError(
-          "File sharing was unavailable. Download the PDF and attach it in WhatsApp instead.",
-        );
-      }
-    } finally {
-      sharingRef.current = false;
-      setSharing(false);
-    }
-  }
   function download() {
     if (!file) return;
     downloadInvoiceFile(file);
@@ -117,22 +84,15 @@ export function InvoiceWhatsApp({
             {file.name} · {Math.max(1, Math.ceil(file.size / 1024))} KB
           </p>
           <p>
-            {native
-              ? `Choose WhatsApp in the share sheet, then select ${invoice.customer.name} (${invoice.customer.phone}).`
-              : "WhatsApp Web cannot attach a PDF automatically. Download the invoice, then attach it using the paperclip → Document in the customer’s chat."}
+            WhatsApp opens directly for{" "}
+            <strong>
+              {invoice.customer.name} · {invoice.customer.phone}
+            </strong>
+            , using the billing number. Attach the downloaded PDF using Attach →
+            Document before sending.
           </p>
           <div className="heading-actions">
-            {native ? (
-              <button
-                type="button"
-                className="btn"
-                disabled={sharing}
-                onClick={share}
-              >
-                <MessageCircle size={16} />
-                {sharing ? "Sharing…" : "Share PDF"}
-              </button>
-            ) : url ? (
+            {url ? (
               <a
                 className="btn"
                 href={url}
@@ -149,12 +109,7 @@ export function InvoiceWhatsApp({
                 WhatsApp chat.
               </p>
             )}
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={download}
-              disabled={sharing}
-            >
+            <button type="button" className="btn secondary" onClick={download}>
               <Download size={16} />
               Download PDF
             </button>

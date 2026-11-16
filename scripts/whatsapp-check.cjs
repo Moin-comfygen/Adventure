@@ -93,7 +93,7 @@ const fs = require("node:fs");
   const url = new URL(popup.url());
   assert.equal(url.host, "wa.me");
   assert.match(url.pathname, /^\/91\d{10}$/);
-  assert.match(url.searchParams.get("text"), /attached as a PDF/);
+  assert.match(url.searchParams.get("text"), /Thank you for visiting/);
   await popup.close();
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -106,41 +106,25 @@ const fs = require("node:fs");
   }
   assert.deepEqual(errors, []);
   await context.close();
-  // Native: a file (not a URL or text-only message) is passed directly under a user gesture.
+  // Even when native file sharing is supported, target the billing number without a contact picker.
   ({ context, page, errors } = await setup("native"));
   panel = await openInvoice(page);
-  await panel.getByRole("button", { name: "Share PDF", exact: true }).click();
-  await panel.getByText(/Share sheet completed/).waitFor();
-  const shares = await page.evaluate(() => window.__shares);
-  assert.equal(shares.length, 1);
-  assert.equal(shares[0].type, "application/pdf");
-  assert.equal(shares[0].header, "%PDF-");
-  assert(shares[0].size > 1000);
-  assert.equal(shares[0].active, true);
+  const direct = panel.getByRole("link", {
+    name: "Download PDF & open WhatsApp",
+  });
+  await direct.waitFor();
+  assert.equal(
+    await panel.getByRole("button", { name: "Share PDF", exact: true }).count(),
+    0,
+  );
+  assert.equal((await page.evaluate(() => window.__shares)).length, 0);
+  const greeting = new URL(await direct.getAttribute("href")).searchParams.get(
+    "text",
+  );
+  assert.match(greeting, /greetings from/);
+  assert.match(greeting, /Thank you for visiting/);
   assert.deepEqual(errors, []);
   await context.close();
-  // Cancellation remains retryable; blocked native sharing offers desktop fallback.
-  for (const mode of ["cancel", "denied"]) {
-    ({ context, page, errors } = await setup(mode));
-    panel = await openInvoice(page);
-    await panel.getByRole("button", { name: "Share PDF", exact: true }).click();
-    if (mode === "cancel") {
-      await panel.getByText(/Sharing cancelled/).waitFor();
-      assert.equal(
-        await panel
-          .getByRole("button", { name: "Share PDF", exact: true })
-          .isEnabled(),
-        true,
-      );
-    } else {
-      await panel
-        .getByRole("link", { name: "Download PDF & open WhatsApp" })
-        .waitFor();
-      await panel.getByRole("alert").waitFor();
-    }
-    assert.deepEqual(errors, []);
-    await context.close();
-  }
   // The success-toast WhatsApp action routes through PDF sharing for the invoice just saved.
   ({ context, page, errors } = await setup("desktop"));
   await page
@@ -227,10 +211,8 @@ const fs = require("node:fs");
       passed: true,
       desktopPdfDownload: true,
       customerChat: true,
-      nativePdfFile: true,
-      userGesture: true,
-      cancelRetry: true,
-      nativeDeniedFallback: true,
+      billingRecipientPreselected: true,
+
       savedBillAction: true,
       latestSavedInvoiceSnapshot: true,
       editedReminder: true,

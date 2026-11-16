@@ -1,4 +1,4 @@
-import { Invoice, money, paid, round } from "./model";
+import { Invoice } from "./model";
 export function whatsappNumber(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) return "91" + digits;
@@ -8,7 +8,7 @@ export function whatsappNumber(phone: string) {
   );
 }
 export function invoiceShareMessage(invoice: Invoice, business: string) {
-  return `Hello ${invoice.customer.name}, your invoice ${invoice.id} from ${business} is attached as a PDF. Total: ${money(invoice.total)}. Paid: ${money(paid(invoice))}. Balance: ${money(round(Math.max(0, invoice.total - paid(invoice))))}. Thank you for booking with us!`;
+  return `Hello ${invoice.customer.name}, greetings from ${business}!\nThank you for visiting us.\nPlease find your invoice ${invoice.id} attached.`;
 }
 export function whatsappInvoiceUrl(phone: string, message: string) {
   return `https://wa.me/${whatsappNumber(phone)}?text=${encodeURIComponent(message)}`;

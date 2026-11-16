@@ -9,7 +9,8 @@ export type Module =
   | "Customers"
   | "Reports"
   | "Team & Permissions"
-  | "Settings";
+  | "Settings"
+  | "Customer Bookings";
 export type Action = "view" | "create" | "edit" | "cancel" | "export" | "print";
 export const modules: Module[] = [
   "Dashboard",
@@ -21,6 +22,7 @@ export const modules: Module[] = [
   "Reports",
   "Team & Permissions",
   "Settings",
+  "Customer Bookings",
 ];
 export const actions: Action[] = [
   "view",
@@ -67,6 +69,9 @@ export type Line = {
 };
 export type Payment = { method: string; amount: number; date: string };
 export type Invoice = {
+  customerBookingId?: string;
+  customerBookingVersion?: number;
+  businessSnapshot?: State["business"];
   refundReason?: string;
   id: string;
   externalId?: string;
@@ -123,6 +128,7 @@ export type Template = {
   width: "58" | "80";
 };
 export type State = {
+  bookingBranding?: { template?: Template; services: Service[] };
   version: 1;
   services: Service[];
   agents: Agent[];
@@ -229,6 +235,7 @@ export function allowed(s: State, role: Role, m: Module, a: Action = "view") {
   if (role === "Receptionist")
     return (
       (m === "Billing POS" && ["view", "create", "print"].includes(a)) ||
+      (m === "Customer Bookings" && ["view", "create"].includes(a)) ||
       (m === "Customers" && a === "view") ||
       (m === "Sales Management" && ["view", "print"].includes(a))
     );

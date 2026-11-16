@@ -921,6 +921,11 @@ function SalesLedgerContent(props: LedgerProps) {
                   </td>
                   <td>
                     <b>{i.id}</b>
+                    {i.customerBookingId && (
+                      <small className="booking-source">
+                        Booked by customer
+                      </small>
+                    )}
                     <small>{dateIN(i.date)}</small>
                     {i.externalId && <small>{i.externalId}</small>}
                   </td>
