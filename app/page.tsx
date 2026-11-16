@@ -2849,12 +2849,29 @@ export default function Home() {
             aria-modal="true"
             aria-label="Invoice preview"
           >
-            <div className="no-print">
+            <div className="no-print invoice-preview-toolbar">
               <div className="card-heading">
                 <h2>Invoice {modal.id}</h2>
-                <button aria-label="Close" onClick={() => setModal(null)}>
-                  <X />
-                </button>
+                <div className="heading-actions">
+                  {can("Billing POS", "create") && (
+                    <Button
+                      className="secondary"
+                      onClick={() => {
+                        setModal(null);
+                        if (page !== "Billing POS") navigate("Billing POS");
+                      }}
+                    >
+                      Continue billing
+                    </Button>
+                  )}
+                  <button
+                    className="icon-button"
+                    aria-label="Close"
+                    onClick={() => setModal(null)}
+                  >
+                    <X />
+                  </button>
+                </div>
               </div>
               <div className="section-toolbar">
                 <div className="tabs">
@@ -2955,64 +2972,87 @@ export default function Home() {
                 ))}
             </div>
             <div className="no-print invoice-operations">
-              {modal.status === "Active" && can("Sales Management", "edit") && (
-                <form
-                  className="inline-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const el = e.currentTarget;
-                    run(() => {
-                      requirePermission(
-                        state,
-                        role,
-                        "Sales Management",
-                        "edit",
-                      );
-                      const fd = new FormData(el);
-                      const amount = Number(fd.get("amount"));
-                      if (
-                        amount <= 0 ||
-                        amount > round(modal.total - paid(modal))
-                      )
-                        throw Error("Payment must not exceed balance due");
-                      const updated = {
-                        ...modal,
-                        payments: [
-                          ...modal.payments,
-                          {
-                            amount,
-                            method: String(fd.get("method")),
-                            date: new Date().toISOString(),
-                          },
-                        ],
-                      };
-                      setS({
-                        ...state,
-                        invoices: state.invoices.map((i) =>
-                          i.id === modal.id ? updated : i,
-                        ),
-                      });
-                      setModal(updated);
-                      notify("Payment recorded");
-                    });
-                  }}
-                >
-                  <input
-                    name="amount"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="Collect balance"
-                    required
-                  />
-                  <select name="method">
-                    {["Cash", "UPI", "Card", "Bank Transfer"].map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
-                  <Button>Record payment</Button>
-                </form>
+              {modal.status === "Active" && paid(modal) >= modal.total && (
+                <div className="invoice-paid-notice" role="status">
+                  <Check size={20} />
+                  <div>
+                    <strong>Paid in full</strong>
+                    <p>
+                      {money(paid(modal))} received · Balance due {money(0)}. No
+                      additional payment is needed.
+                    </p>
+                  </div>
+                </div>
               )}
+              {modal.status === "Active" &&
+                paid(modal) < modal.total &&
+                can("Sales Management", "edit") && (
+                  <div>
+                    <p className="invoice-balance-notice">
+                      Balance due:{" "}
+                      <strong>{money(round(modal.total - paid(modal)))}</strong>
+                    </p>
+                    <form
+                      className="inline-form"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const el = e.currentTarget;
+                        run(() => {
+                          requirePermission(
+                            state,
+                            role,
+                            "Sales Management",
+                            "edit",
+                          );
+                          const fd = new FormData(el);
+                          const amount = Number(fd.get("amount"));
+                          if (
+                            !Number.isFinite(amount) ||
+                            amount <= 0 ||
+                            amount > round(modal.total - paid(modal))
+                          )
+                            throw Error("Payment must not exceed balance due");
+                          const updated = {
+                            ...modal,
+                            payments: [
+                              ...modal.payments,
+                              {
+                                amount,
+                                method: String(fd.get("method")),
+                                date: new Date().toISOString(),
+                              },
+                            ],
+                          };
+                          setS({
+                            ...state,
+                            invoices: state.invoices.map((i) =>
+                              i.id === modal.id ? updated : i,
+                            ),
+                          });
+                          setModal(updated);
+                          notify("Payment recorded");
+                        });
+                      }}
+                    >
+                      <input
+                        aria-label="Payment amount"
+                        max={round(modal.total - paid(modal))}
+                        name="amount"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="Collect balance"
+                        required
+                      />
+                      <select name="method" aria-label="Payment method">
+                        {["Cash", "UPI", "Card", "Bank Transfer"].map((m) => (
+                          <option key={m}>{m}</option>
+                        ))}
+                      </select>
+                      <Button>Record payment</Button>
+                    </form>
+                  </div>
+                )}
               {modal.status === "Active" &&
                 can("Sales Management", "cancel") && (
                   <div className="heading-actions">

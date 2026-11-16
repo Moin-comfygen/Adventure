@@ -5402,3 +5402,48 @@ tr:focus-within .ledger-row-actions button {
 .ledger-trend .recharts-wrapper {
   max-width: 100%;
 }
+/* Preview actions remain available when the invoice is taller than the screen. */
+.invoice-preview-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f8fafc;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.invoice-preview-toolbar .card-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.invoice-preview-toolbar .card-heading h2 {
+  font-size: 18px;
+}
+.invoice-paid-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #bbdfcd;
+  border-radius: 8px;
+  background: #edf9f2;
+  color: #166534;
+}
+.invoice-paid-notice svg {
+  flex-shrink: 0;
+}
+.invoice-paid-notice p {
+  margin: 4px 0 0;
+  line-height: 1.6;
+}
+.invoice-balance-notice {
+  margin: 16px 0 0;
+  color: #0e3b4a;
+}
+@media (max-width: 570px) {
+  .invoice-preview-toolbar .section-toolbar {
+    gap: 8px;
+  }
+  .invoice-preview-toolbar .heading-actions {
+    gap: 8px;
+  }
+}
