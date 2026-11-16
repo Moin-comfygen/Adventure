@@ -168,6 +168,25 @@ const fs = require("node:fs");
     await page.getByRole("heading", { name: /^Invoice ADV-/ }).innerText(),
     /ADV-00076/,
   );
+  page.on("dialog", (dialog) =>
+    dialog.type() === "prompt"
+      ? dialog.accept("Share snapshot test")
+      : dialog.accept(),
+  );
+  await page.getByRole("button", { name: "Full refund", exact: true }).click();
+  await page
+    .locator("#print-invoice")
+    .getByText("Refunded", { exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page
+    .locator(".pos-success-toast")
+    .getByRole("button", { name: "WhatsApp", exact: true })
+    .click();
+  await page
+    .locator("#print-invoice")
+    .getByText("Refunded", { exact: true })
+    .waitFor();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   assert.equal(
     await page
@@ -213,6 +232,7 @@ const fs = require("node:fs");
       cancelRetry: true,
       nativeDeniedFallback: true,
       savedBillAction: true,
+      latestSavedInvoiceSnapshot: true,
       editedReminder: true,
       viewports: [1440, 390],
     }),

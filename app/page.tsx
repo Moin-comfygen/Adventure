@@ -444,9 +444,11 @@ export default function Home() {
   }
   function shareInvoice(invoice: Invoice, message?: string) {
     requirePermission(state, role, "Sales Management", "print");
-    openInvoice(invoice);
+    const currentInvoice =
+      state.invoices.find((item) => item.id === invoice.id) || invoice;
+    openInvoice(currentInvoice);
     setFormat("A4");
-    setShareRequest({ id: invoice.id, message });
+    setShareRequest({ id: currentInvoice.id, message });
   }
   function recordPayment(invoice: Invoice) {
     openInvoice(invoice);
