@@ -54,12 +54,13 @@ export function invoiceLines(s: State, i: Invoice) {
     s.templates[s.defaultTemplate].footer,
   ];
 }
-export async function invoicePdf(
+export async function buildInvoicePdf(
   element: HTMLElement,
   name: string,
   thermal = false,
   width = 80,
 ) {
+  await document.fonts.ready;
   const images = Array.from(element.querySelectorAll("img"));
   await Promise.all(
     images.map((image) => {
@@ -116,5 +117,21 @@ export async function invoicePdf(
       (slice.height * imageWidth) / canvas.width,
     );
   }
+  doc.setProperties({ title: name });
+  return doc;
+}
+export async function invoicePdf(
+  element: HTMLElement,
+  name: string,
+  thermal = false,
+  width = 80,
+) {
+  const doc = await buildInvoicePdf(element, name, thermal, width);
   doc.save(`${name}.pdf`);
+}
+export async function invoicePdfFile(element: HTMLElement, name: string) {
+  const doc = await buildInvoicePdf(element, name);
+  return new File([doc.output("blob")], `${name}.pdf`, {
+    type: "application/pdf",
+  });
 }

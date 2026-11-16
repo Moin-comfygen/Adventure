@@ -7,10 +7,12 @@ export function InvoiceReminder({
   invoice,
   business,
   onClose,
+  onWhatsApp,
 }: {
   invoice: Invoice;
   business: string;
   onClose: () => void;
+  onWhatsApp?: (message: string) => void;
 }) {
   const [message, setMessage] = useState(
     `Hello ${invoice.customer.name}, a friendly reminder that ${money(invoice.total - paid(invoice))} is pending for invoice ${invoice.id} with ${business}. Please contact us to arrange payment. Thank you!`,
@@ -35,6 +37,16 @@ export function InvoiceReminder({
         />
       </label>
       <div className="heading-actions">
+        {onWhatsApp && (
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => onWhatsApp(message)}
+          >
+            <MessageCircle size={16} />
+            WhatsApp with invoice PDF
+          </button>
+        )}
         <button
           className="btn secondary"
           onClick={() =>

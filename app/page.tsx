@@ -72,6 +72,7 @@ import { DateRangePicker } from "@/components/date-range-picker";
 import { pluralize, initials, showDemoLabels } from "@/lib/presentation";
 import { Overview, PeriodTabs } from "@/components/dashboard/overview";
 import { periodBounds } from "@/lib/dashboard-presentation";
+import { InvoiceWhatsApp } from "@/components/invoice-whatsapp";
 import { InvoiceReminder } from "@/components/invoice-reminder";
 import {
   CommandPalette,
@@ -157,6 +158,10 @@ export default function Home() {
   const billingPreviewFocusRef = useRef(false);
   const [modal, setModal] = useState<Invoice | null>(null);
   const [reminderInvoice, setReminderInvoice] = useState<Invoice | null>(null);
+  const [shareRequest, setShareRequest] = useState<{
+    id: string;
+    message?: string;
+  } | null>(null);
   const [pdfRequest, setPdfRequest] = useState<string | null>(null);
   const [format, setFormat] = useState<"A4" | "Thermal">("A4");
   const [agentEdit, setAgentEdit] = useState<Agent | null>(null);
@@ -314,6 +319,7 @@ export default function Home() {
       if (event.key === "Escape") {
         event.preventDefault();
         setModal(null);
+        setShareRequest(null);
         setAgentView("");
         setAgentEdit(null);
       }
@@ -412,6 +418,7 @@ export default function Home() {
     setPage(nextPage);
     sessionStorage.setItem("adventure-last-page", nextPage);
     setModal(null);
+    setShareRequest(null);
     setAgentView("");
     setReminderInvoice(null);
     setPdfRequest(null);
@@ -433,6 +440,13 @@ export default function Home() {
     if (role === "Receptionist" && i.createdBy !== role)
       throw Error("Invoice outside permitted history.");
     setModal(i);
+    setShareRequest(null);
+  }
+  function shareInvoice(invoice: Invoice, message?: string) {
+    requirePermission(state, role, "Sales Management", "print");
+    openInvoice(invoice);
+    setFormat("A4");
+    setShareRequest({ id: invoice.id, message });
   }
   function recordPayment(invoice: Invoice) {
     openInvoice(invoice);
@@ -1121,6 +1135,7 @@ export default function Home() {
               }}
               key={role}
               onDirtyChange={setBillingDirty}
+              onWhatsApp={(invoice) => run(() => shareInvoice(invoice))}
               onPreview={(invoice) => {
                 billingPreviewFocusRef.current = true;
                 setFormat("A4");
@@ -2492,6 +2507,14 @@ export default function Home() {
         <InvoiceReminder
           invoice={reminderInvoice}
           business={state.business.name}
+          onWhatsApp={
+            can("Sales Management", "print")
+              ? (message) => {
+                  setReminderInvoice(null);
+                  run(() => shareInvoice(reminderInvoice, message));
+                }
+              : undefined
+          }
           onClose={() => setReminderInvoice(null)}
         />
       )}
@@ -2858,6 +2881,7 @@ export default function Home() {
                       className="secondary"
                       onClick={() => {
                         setModal(null);
+                        setShareRequest(null);
                         if (page !== "Billing POS") navigate("Billing POS");
                       }}
                     >
@@ -2867,7 +2891,10 @@ export default function Home() {
                   <button
                     className="icon-button"
                     aria-label="Close"
-                    onClick={() => setModal(null)}
+                    onClick={() => {
+                      setModal(null);
+                      setShareRequest(null);
+                    }}
                   >
                     <X />
                   </button>
@@ -2876,12 +2903,14 @@ export default function Home() {
               <div className="section-toolbar">
                 <div className="tabs">
                   <button
+                    disabled={shareRequest?.id === modal.id}
                     className={format === "A4" ? "selected" : ""}
                     onClick={() => setFormat("A4")}
                   >
                     A4
                   </button>
                   <button
+                    disabled={shareRequest?.id === modal.id}
                     className={format === "Thermal" ? "selected" : ""}
                     onClick={() => setFormat("Thermal")}
                   >
@@ -2889,6 +2918,12 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="heading-actions">
+                  <Button
+                    className="secondary"
+                    onClick={() => run(() => shareInvoice(modal))}
+                  >
+                    <MessageCircle size={16} /> WhatsApp PDF
+                  </Button>
                   <Button
                     className="secondary"
                     onClick={() =>
@@ -2930,6 +2965,17 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            {shareRequest?.id === modal.id && (
+              <div className="no-print">
+                <InvoiceWhatsApp
+                  key={`${modal.id}-${modal.status}-${paid(modal)}`}
+                  invoice={modal}
+                  business={state.business.name}
+                  message={shareRequest.message}
+                  onClose={() => setShareRequest(null)}
+                />
+              </div>
+            )}
             <div
               id="print-invoice"
               className={`invoice-canvas ${format === "Thermal" ? "thermal" : ""}`}

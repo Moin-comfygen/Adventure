@@ -23,7 +23,6 @@ import {
   calculate,
   money,
   round,
-  paid,
   type createInvoice,
 } from "@/lib/model";
 import {
@@ -57,6 +56,7 @@ export type BillingProps = {
   onCustomerConsumed: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onPreview: (invoice: Invoice) => void;
+  onWhatsApp: (invoice: Invoice) => void;
   onGlobalSearch: () => void;
   blocked: boolean;
 };
@@ -69,6 +69,7 @@ export function BillingPos({
   onCustomerConsumed,
   onDirtyChange,
   onPreview,
+  onWhatsApp,
   onGlobalSearch,
   blocked,
 }: BillingProps) {
@@ -682,14 +683,15 @@ export function BillingPos({
                 <Printer size={15} /> Print
               </button>
             )}
-            <a
-              className="btn secondary"
-              target="_blank"
-              rel="noopener noreferrer"
-              href={`https://wa.me/91${mobileDigits(lastSaved.customer.phone)}?text=${encodeURIComponent(`${state.business.name} — Invoice ${lastSaved.id}: Total ${money(lastSaved.total)}, paid ${money(paid(lastSaved))}, balance ${money(lastSaved.total - paid(lastSaved))}. Thank you for booking with us!`)}`}
-            >
-              <MessageCircle size={15} /> WhatsApp
-            </a>
+            {can("print") && (
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => onWhatsApp(lastSaved)}
+              >
+                <MessageCircle size={15} /> WhatsApp
+              </button>
+            )}
             <button type="button" className="btn" onClick={newBill}>
               <Plus size={15} /> New bill
             </button>

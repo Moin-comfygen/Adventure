@@ -327,8 +327,8 @@ const fs = require("node:fs");
   assert(
     await page
       .getByRole("status", { name: "Invoice saved" })
-      .getByRole("link", { name: "WhatsApp" })
-      .getAttribute("href"),
+      .getByRole("button", { name: "WhatsApp", exact: true })
+      .isEnabled(),
   );
   assert.equal(
     await page
